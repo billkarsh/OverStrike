@@ -5,7 +5,7 @@ OverStrike
 
 OverStrike is a postprocessing adjunct to SpikeGLX.
 
-OverStrike overwrites noisy regions in you binary data file with zeros:
+OverStrike overwrites noisy regions in binary data with zeros:
 
 - Zero any range of samples or times.
 - Zero all channels or a specified subset.
