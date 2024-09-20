@@ -13,18 +13,13 @@
 class Tool
 {
 private:
-    double          srate;
     qint64          smpEOF;
     KVParams        kvp;
-    QVector<uint>   ig2ic,
-                    vZ;
+    QVector<uint>   vZ;
     vec_i16         buf;
-    int             acq[3],
-                    nG,
-                    SY,
+    int             nG,
+                    nN,
                     bufSmps;
-    bool            lf,
-                    isSY;
 
 public:
     Tool();
@@ -38,6 +33,14 @@ private:
     bool channel_counts();
     void size_buffer();
     void run();
+    void doLines();
+    void line_fill_buf(
+        const qint16    *Ya,
+        const qint16    *Yb,
+        qint64          Xab,
+        int             i0,
+        int             iLim );
+    void doZeros();
 };
 
 #endif  // TOOL_H

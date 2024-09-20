@@ -8,6 +8,7 @@ Usage:
 
 Options:
 -chans=0,3:5    ;only zero these channels (acquisition indices)
+-linefill       ;rather than zeros, draw lines between segment endpoints
 
 Notes:
 - Use -file to set path and name of the .bin file.
@@ -31,6 +32,10 @@ Notes:
 
 Change Log
 ----------
+Version 1.1
+- Support NP2020 quad-probes.
+- Add -linefill option.
+
 Version 1.0
 - Initial release.
 

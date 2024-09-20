@@ -27,6 +27,7 @@ static void PrintUsage()
     Log() << ">OverStrike -file=path/file.bin <-samps=a,b | -secs=a,b> [ options ]\n";
     Log() << "Options:";
     Log() << "-chans=0,3:5    ;only zero these channels (acquisition indices)";
+    Log() << "-linefill       ;rather than zeros, draw lines between segment endpoints";
     Log() << "------------------------";
 }
 
@@ -62,6 +63,8 @@ bool CGBL::SetCmdLine( int argc, char* argv[] )
                 return false;
             }
         }
+        else if( IsArg( "-linefill", argv[i] ) )
+            linefil = true;
         else {
 bad_param:
             Log() <<

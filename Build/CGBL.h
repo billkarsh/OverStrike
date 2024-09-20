@@ -14,9 +14,10 @@ public:
     std::vector<qint64> samps;
     QString             file;
     QVector<uint>       usrZ;
+    bool                linefil;
 
 public:
-    CGBL()  {}
+    CGBL() : linefil(false) {}
 
     bool SetCmdLine( int argc, char* argv[] );
 

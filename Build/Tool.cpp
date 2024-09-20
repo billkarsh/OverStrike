@@ -72,14 +72,13 @@ bool Tool::good_files()
         return false;
     }
 
-    lf = GBL.file.contains( ".lf." );
     return true;
 }
 
 
 void Tool::secs_to_samps()
 {
-    srate = kvp["imSampRate"].toDouble();
+    double  srate = kvp["imSampRate"].toDouble();
 
     if( !GBL.samps.size() ) {
         for( int i = 0; i < 2; ++i )
@@ -90,15 +89,8 @@ void Tool::secs_to_samps()
 
 bool Tool::channel_counts()
 {
-    QStringList sl;
-    sl = kvp["acqApLfSy"].toString().split(
-            QRegExp("^\\s+|\\s*,\\s*"),
-            QString::SkipEmptyParts );
-    for( int i = 0; i < 3; ++i )
-        acq[i] = sl[i].toInt();
-
     nG      = kvp["nSavedChans"].toInt();
-    SY      = acq[0] + acq[1];
+    nN      = 0;
     smpEOF  = kvp["fileSizeBytes"].toLongLong() / (nG*sizeof(qint16));
 
     GBL.samps[1] = qBound( 0LL, GBL.samps[1], smpEOF );
@@ -107,17 +99,46 @@ bool Tool::channel_counts()
     if( GBL.samps[0] >= GBL.samps[1] )
         return false;
 
-    Subset::rngStr2Vec( ig2ic, kvp["snsSaveChanSubset"].toString() );
-    isSY = ig2ic[nG-1] >= SY;
+    if( GBL.usrZ.size() ) {
 
-    foreach( uint C, GBL.usrZ ) {
-        if( C < SY ) {
-            int ig = ig2ic.indexOf( C );
-            if( ig >= 0 )
-                vZ.push_back( ig );
+        // idx_SY used to test if acq channel index is neural
+
+        QStringList sl;
+        sl = kvp["acqApLfSy"].toString().split(
+                QRegExp("^\\s+|\\s*,\\s*"),
+                QString::SkipEmptyParts );
+        int idx_SY = sl[0].toInt() + sl[1].toInt();
+
+        // ig2ic used to get acq channel index
+
+        QVector<uint>   ig2ic;
+        QString         chnstr = kvp["snsSaveChanSubset"].toString();
+        if( Subset::isAllChansStr( chnstr ) )
+            Subset::defaultVec( ig2ic, nG );
+        else
+            Subset::rngStr2Vec( ig2ic, chnstr );
+
+        // validate user list of extant neural channels
+
+        foreach( uint C, GBL.usrZ ) {
+            if( C < idx_SY ) {
+                int ig = ig2ic.indexOf( C );
+                if( ig >= 0 )
+                    vZ.push_back( ig );
+            }
         }
+        qSort( vZ );
     }
-    qSort( vZ );
+    else {
+
+        // Calculate nN
+
+        QStringList sl;
+        sl = kvp["snsApLfSy"].toString().split(
+                QRegExp("^\\s+|\\s*,\\s*"),
+                QString::SkipEmptyParts );
+        nN = sl[0].toInt() + sl[1].toInt();
+    }
 
     return true;
 }
@@ -132,61 +153,155 @@ void Tool::size_buffer()
 
 void Tool::run()
 {
+    if( GBL.linefil )
+        doLines();
+    else
+        doZeros();
+}
+
+
+void Tool::doLines()
+{
+    vec_i16 Ya, Yb;
+    Ya.resize( nG );
+    Yb.resize( nG );
+
     QFile   f( GBL.file );
-    qint64  remSmps     = GBL.samps[1] - GBL.samps[0],
-            curSmp      = GBL.samps[0];
+    qint64  smpRem      = GBL.samps[1] - GBL.samps[0],
+            smpCur      = GBL.samps[0],
+            Xab         = smpRem + 1;
     char    *B          = (char*)&buf[0];
     int     smpBytes    = nG * sizeof(qint16),
-            doSmps;
+            i0          = 0;
 
     f.open( QIODevice::ReadWrite );
 
-    if( curSmp > 0 )
-        f.seek( curSmp * smpBytes );
+// Ya
+
+    if( smpCur > 0 )
+        f.seek( smpBytes * (smpCur - 1) );
+    else
+        --Xab;
+    f.read( (char*)&Ya[0], smpBytes );
+
+// Yb
+
+    if( GBL.samps[1] < smpEOF )
+        f.seek( smpBytes * GBL.samps[1] );
+    else {
+        f.seek( smpBytes * (GBL.samps[1] - 1) );
+        --Xab;
+    }
+    f.read( (char*)&Yb[0], smpBytes );
+
+// buffer-sized chunks
+
+    f.seek( smpBytes * smpCur );
+
+    do {
+        int smpThis = qMin( smpRem, qint64(bufSmps) );
+
+        f.read( B, smpBytes * smpThis );
+
+        line_fill_buf( &Ya[0], &Yb[0], Xab, i0, i0 + smpThis );
+
+        f.seek( smpBytes * (smpCur + i0) );
+        f.write( B, smpBytes * smpThis );
+
+        i0      += smpThis;
+        smpRem -= smpThis;
+
+    } while( smpRem > 0 );
+}
+
+
+void Tool::line_fill_buf(
+    const qint16    *Ya,
+    const qint16    *Yb,
+    qint64          Xab,
+    int             i0,
+    int             iLim )
+{
+    qint16  *d  = &buf[0];
+
+    if( vZ.size() ) {
+        uint    *pz = &vZ[0];
+        int      nz = vZ.size();
+        for( int i = i0; i < iLim; ++i, d += nG ) {
+            double  dx = double(i) / Xab;
+            for( int iz = 0; iz < nz; ++iz ) {
+                int ig = pz[iz];
+                d[ig] = Ya[ig] + dx * (Yb[ig] - Ya[ig]);
+            }
+        }
+    }
+    else {
+        for( int i = i0; i < iLim; ++i, d += nG ) {
+            double  dx = double(i) / Xab;
+            for( int ig = 0; ig < nN; ++ig )
+                d[ig] = Ya[ig] + dx * (Yb[ig] - Ya[ig]);
+        }
+    }
+}
+
+
+void Tool::doZeros()
+{
+    QFile   f( GBL.file );
+    qint64  smpRem      = GBL.samps[1] - GBL.samps[0],
+            smpCur      = GBL.samps[0];
+    char    *B          = (char*)&buf[0];
+    int     smpBytes    = nG * sizeof(qint16),
+            smpThis;
+
+    f.open( QIODevice::ReadWrite );
+
+    if( smpCur > 0 )
+        f.seek( smpBytes * smpCur );
 
     if( vZ.size() ) {
         uint    *pz = &vZ[0];
         int      nz = vZ.size();
         for(;;) {
-            doSmps = qMin( qint64(bufSmps), remSmps );
-            f.read( B, doSmps * smpBytes );
+            smpThis = qMin( smpRem, qint64(bufSmps) );
+            f.read( B, smpBytes * smpThis );
 
             qint16  *b = (qint16*)B;
-            for( int it = 0; it < doSmps; ++it, b += nG ) {
+            for( int it = 0; it < smpThis; ++it, b += nG ) {
                 for( int iz = 0; iz < nz; ++iz )
                     b[pz[iz]] = 0;
             }
 
-            f.seek( curSmp * smpBytes );
-            f.write( B, doSmps * smpBytes );
-            if( (remSmps -= doSmps) <= 0 )
+            f.seek( smpBytes * smpCur );
+            f.write( B, smpBytes * smpThis );
+            if( (smpRem -= smpThis) <= 0 )
                 break;
-            curSmp += doSmps;
+            smpCur += smpThis;
         }
     }
-    else if( isSY ) {
+    else if( nN < nG ) {
         for(;;) {
-            doSmps = qMin( qint64(bufSmps), remSmps );
-            f.read( B, doSmps * smpBytes );
+            smpThis = qMin( smpRem, qint64(bufSmps) );
+            f.read( B, smpBytes * smpThis );
 
-            for( int it = 0; it < doSmps; ++it )
-                memset( B + it * smpBytes, 0, smpBytes - sizeof(qint16) );
+            for( int it = 0; it < smpThis; ++it )
+                memset( B + smpBytes * it, 0, sizeof(qint16)*nN );
 
-            f.seek( curSmp * smpBytes );
-            f.write( B, doSmps * smpBytes );
-            if( (remSmps -= doSmps) <= 0 )
+            f.seek( smpBytes * smpCur );
+            f.write( B, smpBytes * smpThis );
+            if( (smpRem -= smpThis) <= 0 )
                 break;
-            curSmp += doSmps;
+            smpCur += smpThis;
         }
     }
     else {
-        doSmps = qMin( qint64(bufSmps), remSmps );
-        memset( B, 0, doSmps * smpBytes );
+        smpThis = qMin( smpRem, qint64(bufSmps) );
+        memset( B, 0, smpBytes * smpThis );
         for(;;) {
-            f.write( B, doSmps * smpBytes );
-            if( (remSmps -= doSmps) <= 0 )
+            f.write( B, smpBytes * smpThis );
+            if( (smpRem -= smpThis) <= 0 )
                 break;
-            doSmps = qMin( qint64(bufSmps), remSmps );
+            smpThis = qMin( qint64(bufSmps), smpRem );
         }
     }
 }
