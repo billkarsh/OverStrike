@@ -44,10 +44,14 @@ Notes:
 - AP indices are usually in range [0,383] and LF in range [384,767].
 - Acquisition indices are displayed in the SpikeGLX FileViewer.
 - Channel SY is not zeroed, even if in -chans list.
+- For PowerShell, use quotes: >OverStrike -file="myfile" -secs="v1,v2"
 
 
 Change Log
 ----------
+Version 1.2
+- Accept -samp or -samps.
+
 Version 1.1
 - Support NP2020 quad-probes.
 - Add -linefill option.
