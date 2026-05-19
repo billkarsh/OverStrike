@@ -41,6 +41,6 @@ QMAKE_TARGET_COMPANY = Bill Karsh
 QMAKE_TARGET_PRODUCT = OverStrike
 QMAKE_TARGET_DESCRIPTION = Zero probe data
 QMAKE_TARGET_COPYRIGHT = (c) 2024, Bill Karsh, All rights reserved
-VERSION = 1.1
+VERSION = 1.2
 
 
