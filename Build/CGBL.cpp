@@ -53,6 +53,10 @@ bool CGBL::SetCmdLine( int argc, char* argv[] )
             if( samps.size() != 2 )
                 goto bad_param;
         }
+        else if( GetArgList( samps, "-samps=", argv[i] ) ) {
+            if( samps.size() != 2 )
+                goto bad_param;
+        }
         else if( GetArgList( secs, "-secs=", argv[i] ) ) {
             if( secs.size() != 2 )
                 goto bad_param;
